@@ -1,12 +1,14 @@
 import React from "react";
 import "./App.css";
 import { Authenticator, AmplifyTheme } from "aws-amplify-react";
-import { Auth, Hub } from "aws-amplify";
-import { BrowserRouter as Router, Route } from 'react-router-dom'
+import { getUser } from './graphql/queries';
+import { API, graphqlOperation, Auth, Hub } from "aws-amplify";
+import { BrowserRouter as Router, Route } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import ProfilePage from './pages/ProfilePage';
 import MarketPage from './pages/MarketPage';
 import Navbar from './components/Navbar';
+import { registerUser } from "./graphql/mutations";
 
 export const UserContext = React.createContext();
 class App extends React.Component {
@@ -19,7 +21,8 @@ class App extends React.Component {
     Hub.listen('auth', this, 'onHubCapsule');
   }
 
-  getUserData= () => Auth.currentAuthenticatedUser().then(user => 
+  getUserData= () => Auth.currentAuthenticatedUser()
+  .then(user => 
     this.setState({user : (user ? user:null)})
     );
 
@@ -28,6 +31,7 @@ class App extends React.Component {
           case "signIn":
             console.log('signed in');
             this.getUserData();
+            this.registerNewUser(capsule.payload.data);
             break;
           case "signUp":
             console.log('signed up');
@@ -41,8 +45,29 @@ class App extends React.Component {
         }
       };
 
-      handleSignOut = () =>
-        Auth.signOut().catch(err => console.error('Error signing out user', err));
+    registerNewUser = signInData => {
+      const getUserInput = {
+        id: signInData.signInUserSession.IdToken.payload.sub
+      }
+      API.graphql(graphqlOperation(getUser, getUserInput))
+      .then(res => {
+        if (!res.data.getUser){
+          const registerUserInput ={
+            ...getUserInput,
+            username: signInData.username,
+            email: signInData.signInUserSession.idToken.payload.email,
+            registered: true
+          }
+          API.graphql(graphqlOperation(registerUser, {input: registerUserInput}))
+          .then(res => console.log(res))
+          .catch(err => console.error("Error registering new user", err))
+        }
+      })
+    }
+      
+
+    handleSignOut = () =>
+      Auth.signOut().catch(err => console.error('Error signing out user', err));
 
   render() {
     const { user } = this.state;
